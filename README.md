@@ -1,8 +1,8 @@
 # nvram_dump and nvram_build
-## Todd Knarr, 2015
-### tknarr@silverglass.org
-### http://technical.silverglass.org/
-### https://plus.google.com/u/0/+ToddKnarr/
+####Todd Knarr, 2015<br>
+tknarr@silverglass.org<br>
+http://technical.silverglass.org/<br>
+https://plus.google.com/u/0/+ToddKnarr/<br>
 
 Two tools I wrote to help with dealing with DD-WRT NVRAM backup files. I wound
 up needing to be able to dump them out in a human-readable form for my records
