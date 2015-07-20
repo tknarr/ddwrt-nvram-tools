@@ -5,8 +5,7 @@ first for the 2-byte integers in the data. That's most likely because all of
 them use similar CPUs, and the data's actually in the native byte order of the
 CPU. These programs may need modified so you can tell them the byte
 ordering. I've marked the places in the code where that needs to happen with
-TODO markers.
-
+`TODO` markers.
 
 # Static buffers
 
@@ -16,7 +15,6 @@ true for current routers, and it makes the code a lot simpler to just allocate
 fixed-length buffers in the source code. I should probably go back and pull
 those assumptions into a header file and fix the code to use symbols and
 macros.
-
 
 # Support
 
