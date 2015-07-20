@@ -1,0 +1,17 @@
+A backup file consists of a file header followed by some number of
+parameter records, the exact number being contained in the record
+count field of the file header.
+
+File header:
+    6-character string, "DD-WRT"
+    2-byte integer, count of records in the file
+
+Parameter record:
+    1-byte integer, length of parameter name in bytes
+    ASCII text, parameter name
+    2-byte integer, length of parameter value in bytes
+    ASCII text, parameter value, may be zero bytes if there is no value
+
+The 2-byte integers appear to be LSB-first, but that may just be because
+all the routers I have use LSB-first CPUs. The byte order is probably
+architecture-dependent.
