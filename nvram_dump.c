@@ -1,7 +1,7 @@
 // nvram_dump.c
 // Copyright 2015, Todd Knarr <tknarr@silverglass.org>
 // Licensed under the terms of the GPL v3 or any later version.
-// See LICENSE.txt for complete license terms.
+// See LICENSE.md for complete license terms.
 
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
