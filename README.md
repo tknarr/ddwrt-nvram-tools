@@ -10,6 +10,9 @@ and so I could see if there were any problematic entries, and when I found
 some problematic entries I wanted to be able to rebuild the backup file after
 editing them out.
 
+Changes for the defaults.ini format worked out and code contributed by
+[mlan](https://github.com/mlan).
+
 #### nvram_dump
 
 nvram_dump handles turning the backup into a text file of "name=value" entries
@@ -20,7 +23,7 @@ printable character that's escaped because quotation marks and such aren't
 special the way they are in C and it's more readable if they're just left
 alone. The command looks like:
 ```
-nvram_dump [-h] filename ...
+nvram_dump [-h] [-d] filename ...
 ```
 with one or more backup files listed on the command line. It writes the output
 on the console, or you can redirect it to whatever file you want. If multiple
@@ -36,6 +39,9 @@ the line breaks of the original. The last line of the value won't have a '\'
 at the end, or if it did in the data it'll have one escaped as a '\\' double
 backslash, so you can tell where the value ends and the next entry line
 begins.
+
+The -d switch causes the program to read the format used by the defaults.ini
+file rather than the standard NVRAM backup format.
 
 Diagnostic messages are written to the standard error stream. The program
 exits with a 0 exit code if everything went well and 1 if an error occurred.

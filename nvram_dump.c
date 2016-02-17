@@ -3,18 +3,18 @@
 // Licensed under the terms of the GPL v3 or any later version.
 // See LICENSE.md for complete license terms.
 
-//    This program is free software: you can redistribute it and/or modify
-//    it under the terms of the GNU General Public License as published by
-//    the Free Software Foundation, either version 3 of the License, or
-//    (at your option) any later version.
+//	  This program is free software: you can redistribute it and/or modify
+//	  it under the terms of the GNU General Public License as published by
+//	  the Free Software Foundation, either version 3 of the License, or
+//	  (at your option) any later version.
 
-//    This program is distributed in the hope that it will be useful,
-//    but WITHOUT ANY WARRANTY; without even the implied warranty of
-//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//    GNU General Public License for more details.
+//	  This program is distributed in the hope that it will be useful,
+//	  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//	  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the
+//	  GNU General Public License for more details.
 
-//    You should have received a copy of the GNU General Public License
-//    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//	  You should have received a copy of the GNU General Public License
+//	  along with this program.	If not, see <http://www.gnu.org/licenses/>.
 
 // Simple program to read a DD-WRT NVRAM backup file and convert it into
 // name=value pairs in a text file. Control characters and non-ASCII
@@ -24,6 +24,9 @@
 // that shows line breaks. Otherwise newlines are escaped and each
 // entry will occupy one and only one line in the file. Names are
 // always fully escaped since we expect them to never contain newlines.
+// If the '-d' option is given the file format is set to be the one
+// used by /etc/defaults.ini containing the initial default values,
+// otherwise the standard NVRAM backup format is read.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,8 +35,14 @@
 #include <ctype.h>
 #include <errno.h>
 
+// Output string escaping mode
 #define ESC_FULL   0
 #define ESC_HUMAN  1
+
+// File format
+#define FMT_NVRAM		0
+#define FMT_DEFAULTS	1
+
 
 // Returns the number of characters copied to dest.
 int escape_string( int escape_mode, const char *src, char *dest, int max )
@@ -92,7 +101,7 @@ int escape_string( int escape_mode, const char *src, char *dest, int max )
 	return i;
 }
 
-int dump_file( int escape_mode, const char *filename )
+int dump_file( int escape_mode, int file_format, const char *filename )
 {
 	if ( !filename || ( strlen( filename ) == 0 ) )
 	{
@@ -110,26 +119,45 @@ int dump_file( int escape_mode, const char *filename )
 	}
 
 	static unsigned char buffer[65536]; // Static buffer for reading from nvram backup file
-	size_t read_bytes;
+	size_t read_bytes, read_size, len_size, i;
 
-	read_bytes = fread( buffer, sizeof (char), 8, f );
-	if ( read_bytes != 8 || memcmp( buffer, "DD-WRT", 6 ) )
+	if ( file_format == FMT_DEFAULTS )
 	{
-		fprintf( stderr, "dump_file: File %s: Error reading header and record count\n", filename );
-		fclose( f );
-		return 1;
+		read_bytes = fread( buffer, sizeof (char), 4, f );
+		if ( read_bytes != 4 )
+		{
+			fprintf( stderr, "dump_file: File %s: Error reading header and record count\n", filename );
+			fclose( f );
+			return 1;
+		}
 	}
-	unsigned int record_count = buffer[7] * 256 + buffer[6]; // TODO byte ordering
+	else
+	{
+		read_bytes = fread( buffer, sizeof (char), 8, f );
+		if ( read_bytes != 8 || memcmp( buffer, "DD-WRT", 6 ) )
+		{
+			fprintf( stderr, "dump_file: File %s: Error reading header and record count\n", filename );
+			fclose( f );
+			return 1;
+		}
+	}
+
+	unsigned int record_count = 0;
 	unsigned int name_len, value_len;
 	static char name[257], value[65537];
 	unsigned int record = 0;
+
+	if ( file_format == FMT_DEFAULTS )
+		record_count = buffer[1] * 256 + buffer[0]; // TODO byte ordering
+	else
+		record_count = buffer[7] * 256 + buffer[6]; // TODO byte ordering
 
 	while ( record < record_count )
 	{
 		record++;
 
 		// Read the 1-byte length and the variable name.
-		read_bytes = fread( buffer, 1, 1, f );
+		read_bytes = fread( buffer, sizeof (char), 1, f );
 		if ( read_bytes != 1 )
 		{
 			fprintf( stderr, "dump_file: File %s: Error reading name length from record %u\n",
@@ -138,7 +166,7 @@ int dump_file( int escape_mode, const char *filename )
 			return 1;
 		}
 		name_len = buffer[0];
-		read_bytes = fread( buffer, 1, name_len, f );
+		read_bytes = fread( buffer, sizeof (char), name_len, f );
 		if ( read_bytes != name_len )
 		{
 			fprintf( stderr, "dump_file: File %s: Error reading name from record %u\n",
@@ -149,19 +177,22 @@ int dump_file( int escape_mode, const char *filename )
 		memcpy( name, buffer, name_len );
 		name[name_len] = 0;
 
-		// Read the 2-byte length and the value.
-		read_bytes = fread( buffer, 1, 2, f );
-		if ( read_bytes != 2 )
+		// Read the length and value.
+		len_size = ( file_format == FMT_DEFAULTS ) ? 1 : 2;
+		read_bytes = fread( buffer, sizeof (char), len_size, f );
+		if ( read_bytes != len_size )
 		{
 			fprintf( stderr, "dump_file: File %s: Error reading value length from record %u\n",
 					 filename, record );
 			fclose( f );
 			return 1;
 		}
-		value_len = buffer[1] * 256 + buffer[0]; // TODO byte ordering
+		value_len = 0;
+		for ( i = 1; i <= len_size; i++ ) // Loop works backwards, accounts for 0-based index
+			value_len = ( value_len * 256 ) + buffer[len_size-i]; // TODO byte ordering
 		if ( value_len > 0 )
 		{
-			read_bytes = fread( buffer, 1, value_len, f );
+			read_bytes = fread( buffer, sizeof (char), value_len, f );
 			if ( read_bytes != value_len )
 			{
 				fprintf( stderr, "dump_file: File %s: Error reading value from record %u\n",
@@ -176,6 +207,10 @@ int dump_file( int escape_mode, const char *filename )
 		{
 			value[0] = 0;
 		}
+
+		// Skip completely empty records
+		if ( ( strlen( name ) == 0 ) && ( strlen( value ) == 0 ) )
+			continue;
 
 		static char esc_name[513], esc_value[65536*2 + 1];
 		int copied;
@@ -204,11 +239,12 @@ int dump_file( int escape_mode, const char *filename )
 int main( int argc, char **argv )
 {
 	int escape = ESC_FULL;
+	int file_format = FMT_NVRAM;
 	
 	// Check our arguments for options, and for at least one filename after
 	// the options.
 	int opt;
-	while ( ( opt = getopt( argc, argv, "h" ) ) != -1 )
+	while ( ( opt = getopt( argc, argv, "hd" ) ) != -1 )
 	{
 		switch ( (char) opt )
 		{
@@ -216,15 +252,19 @@ int main( int argc, char **argv )
 			escape = ESC_HUMAN;
 			break;
 
+		case 'd':
+			file_format = FMT_DEFAULTS;
+			break;
+
 		default:
-			fprintf( stderr, "Usage: %s [-h] <filename>...\n", argv[0] );
+			fprintf( stderr, "Usage: %s [-h] [-d] <filename>...\n", argv[0] );
 			return 1;
 		}
 	}
 	if ( optind >= argc )
 	{
 		fprintf( stderr, "Expected at least one file\n" );
-		fprintf( stderr, "Usage: %s [-h] <filename>...\n", argv[0] );
+		fprintf( stderr, "Usage: %s [-h] [-d] <filename>...\n", argv[0] );
 		return 1;
 	}
 
@@ -235,7 +275,7 @@ int main( int argc, char **argv )
 	{
 		if ( argv[i] )
 		{
-			sts = dump_file( escape, argv[i] );
+			sts = dump_file( escape, file_format, argv[i] );
 			// Remember our first failure, but keep on going with the rest of the
 			// files so we catch all errors in one pass.
 			if ( sts && !ret )

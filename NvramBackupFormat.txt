@@ -15,3 +15,13 @@ Parameter record:
 The 2-byte integers appear to be LSB-first, but that may just be because
 all the routers I have use LSB-first CPUs. The byte order is probably
 architecture-dependent.
+
+The /etc/defaults.bin file follows the same general format with the
+following changes:
+
+File header:
+    2-byte integer, count of records in the file
+    2-byte string of binary zeroes
+
+Parameter record:
+    The length of the parameter value is 1 byte instead of 2.
