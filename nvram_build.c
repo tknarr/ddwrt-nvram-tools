@@ -20,6 +20,8 @@
 // into a DD-WRT NVRAM backup file. Any escaped characters in the input
 // files are unescaped before writing. Both the normal form and the
 // human-readable form with line breaks can be handled.
+// The '-d' switch causes the output to be written in the form used in the
+// /etc/defaults.ini file for initial default settings.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +29,10 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+
+// File format
+#define FMT_NVRAM		0
+#define FMT_DEFAULTS	1
 
 int unescape_string( const char *src, char *dest )
 {
@@ -107,7 +113,7 @@ int unescape_string( const char *src, char *dest )
 }
 
 // Returns the number of records written, or -1 if an error occurred.
-int build_file( FILE *output_file, const char *filename )
+int build_file( FILE *output_file, int file_format, const char *filename )
 {
 	if ( !output_file )
 	{
@@ -221,12 +227,24 @@ int build_file( FILE *output_file, const char *filename )
 		strncpy( output_buffer+1, name, len );
 		record_len += len + 1; // Name length plus name
 		int vstart = len+1;
-		len = strlen( value ) & 0xFFFF; // Only 2 bytes for the value length
-		output_buffer[vstart] = len & 0xFF; // TODO byte ordering
-		output_buffer[vstart+1] = ( len >> 8 ) & 0xFF;
-		vstart += 2;
+		int vlen = 0;
+		if ( file_format == FMT_DEFAULTS )
+		{
+			vlen = 1;
+			len = strlen( value ) & 0xFF; // Only 1 byte for the value length
+			output_buffer[vstart] = len;
+			vstart++;
+		}
+		else
+		{
+			vlen = 2;
+			len = strlen( value ) & 0xFFFF; // Only 2 bytes for the value length
+			output_buffer[vstart] = len & 0xFF; // TODO byte ordering
+			output_buffer[vstart+1] = ( len >> 8 ) & 0xFF;
+			vstart += 2;
+		}
 		strncpy( output_buffer+vstart, value, len );
-		record_len += len + 2; // Value length plus value
+		record_len += vlen + len; // Value length plus value
 		// And write out our record and count it (we only want to count records we wrote).
 		size_t bytes_written = fwrite( output_buffer, sizeof (char), record_len, output_file );
 		if ( bytes_written != record_len )
@@ -241,7 +259,7 @@ int build_file( FILE *output_file, const char *filename )
 	return record_count;
 }
 
-int output_header( FILE *output_file )
+int output_header( FILE *output_file, int file_format )
 {
 	if ( !output_file )
 	{
@@ -249,9 +267,20 @@ int output_header( FILE *output_file )
 		return 1;
 	}
 
-	// Put 2 zero bytes in the header, we'll set them to the number of records at the end.
-	size_t bytes_written = fwrite( "DD-WRT\0\0", sizeof (char), 8, output_file );
-	if ( bytes_written < 8 )
+	size_t bytes_written, write_size;
+	if ( file_format == FMT_DEFAULTS )
+	{
+		// Put 2 zero bytes in the header, we'll set them to the number of records at the end.
+		write_size = 4;
+		bytes_written = fwrite( "\0\0\0\0", sizeof (char), write_size, output_file );
+	}
+	else
+	{
+		// Put 2 zero bytes in the header, we'll set them to the number of records at the end.
+		write_size = 8;
+		bytes_written = fwrite( "DD-WRT\0\0", sizeof (char), write_size, output_file );
+	}
+	if ( bytes_written < write_size )
 	{
 		fprintf( stderr, "output_header: Problem writing header\n" );
 		return 1;
@@ -259,7 +288,7 @@ int output_header( FILE *output_file )
 	return 0;
 }
 
-int fixup_record_count( FILE *output_file, int record_count )
+int fixup_record_count( FILE *output_file, int file_format, int record_count )
 {
 	if ( !output_file )
 	{
@@ -271,7 +300,10 @@ int fixup_record_count( FILE *output_file, int record_count )
 	unsigned char buffer[2];
 
 	// Rewind file and position at the record count.
-	sts = fseek( output_file, 6, SEEK_SET );
+	if ( file_format == FMT_DEFAULTS )
+		sts = fseek( output_file, 0, SEEK_SET );
+	else
+		sts = fseek( output_file, 6, SEEK_SET );
 	if ( sts != 0 )
 	{
 		fprintf( stderr, "fixup_record_count: Error repositioning to update record count\n" );
@@ -296,12 +328,14 @@ int main( int argc, char **argv )
 	// input file plus ".bin".
 	char output_filename[65541]; // Length is 64K for string + 4 for possible extention + 1 for terminating NUL
 
+	int file_format = FMT_NVRAM;
+
 	memset( output_filename, 0, 65541 );
 	
 	// Check our arguments for options, and for at least one filename after
 	// the options.
 	int opt;
-	while ( ( opt = getopt( argc, argv, "o:" ) ) != -1 )
+	while ( ( opt = getopt( argc, argv, "do:" ) ) != -1 )
 	{
 		switch ( (char) opt )
 		{
@@ -310,15 +344,19 @@ int main( int argc, char **argv )
 			output_filename[65536] = 0;
 			break;
 
+		case 'd':
+			file_format = FMT_DEFAULTS;
+			break;
+
 		default:
-			fprintf( stderr, "Usage: %s [-o <output_filename>] <filename>...\n", argv[0] );
+			fprintf( stderr, "Usage: %s [-o <output_filename>] [-d] <filename>...\n", argv[0] );
 			return 1;
 		}
 	}
 	if ( optind >= argc )
 	{
 		fprintf( stderr, "Expected at least one input file\n" );
-		fprintf( stderr, "Usage: %s [-o <output_filename>] <filename>...\n", argv[0] );
+		fprintf( stderr, "Usage: %s [-o <output_filename>] [-d] <filename>...\n", argv[0] );
 		return 1;
 	}
 
@@ -379,7 +417,7 @@ int main( int argc, char **argv )
 					fprintf( stderr, "main: Error opening %s for output: %s\n", output_filename, errstr );
 					return 1;
 				}
-				sts = output_header( f );
+				sts = output_header( f, file_format );
 				if ( sts != 0 )
 				{
 					ret = 1;
@@ -388,7 +426,7 @@ int main( int argc, char **argv )
 			}
 
 			int cnt;
-			cnt = build_file( f, argv[i] );
+			cnt = build_file( f, file_format, argv[i] );
 			if ( cnt < 0 )
 				ret = 1;
 			else
@@ -399,7 +437,7 @@ int main( int argc, char **argv )
 	{
 		if ( ret == 0 )
 		{
-			sts = fixup_record_count( f, record_count );
+			sts = fixup_record_count( f, file_format, record_count );
 			if ( sts != 0 )
 			{
 				fprintf( stderr, "main: Error updating final record count\n" );
