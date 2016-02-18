@@ -67,7 +67,7 @@ handles both of the ways of handling newlines in values that nvram_dump does,
 so you can send any nvram_dump output back through nvram_build to recreate the
 backup. The command looks like:
 ```
-nvram_build [-o output_filename] filename...
+nvram_build [-o output_filename] [-d] filename...
 ```
 with one or more input files listed on the command line. If you don't use the
 -o switch the program takes the first input filename and replaces any
@@ -76,6 +76,9 @@ didn't have an extension) and uses that as the name of the backup file that'll
 be output. It keeps any path you used, so the output will end up in the same
 directory as the first input file. You can use the -o switch to override this
 and specify a filename for the resulting backup file.
+
+As with nvram_dump, the -d switch causes the program to output a file in the
+format used by the defaults.ini file.
 
 Diagnostic messages are written to the standard error stream. The program
 exits with a 0 exit code if everything went well and 1 if an error occurred.
